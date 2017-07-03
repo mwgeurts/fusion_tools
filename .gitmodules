@@ -1,0 +1,6 @@
+[submodule "plastimatch"]
+	path = plastimatch
+	url = https://gitlab.com/plastimatch/plastimatch.git
+[submodule "ITK"]
+	path = ITK
+	url = git://itk.org/ITK.git
