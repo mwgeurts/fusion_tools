@@ -122,7 +122,48 @@ switch method
 % on the algorithm.
 case 'PLASTIMATCH'
     
-    %% Build reference MHA file
+    %% Build reference image (excluding outside FOV)
+    % Initialize null array of the same size as the reference image
+    refMask = zeros(ref.dimensions);
+    
+    % Create meshgrid the same size as one image
+    [x,y] = meshgrid(ref.start(1):ref.width(1):...
+        ref.start(1) + ref.width(1) * ...
+        (ref.dimensions(1) - 1), ref.start(2):...
+        ref.width(2):ref.start(2) + ...
+        ref.width(2) * (ref.dimensions(2) - 1));
+    
+    % Loop through each reference image slice
+    for i = 1:ref.dimensions(3)
+        
+        % If the reference slice IEC-Y coordinate value is within the new
+        % image slice range
+        if ref.start(3)+(i*ref.width(3)) > ...
+                new.start(3) && ref.start(3) + (i * ...
+                ref.width(3)) < new.start(3) + ...
+                new.dimensions(3) * new.width(3)
+            
+            % Set the mask to 1 within the new image FOV
+            refMask(:,:,i) = sqrt(x.^2+y.^2) < newFOV/2 - 0.1;
+        end
+    end
+    
+    % If the bone flag is enabled, only include bone densities
+    if isfield(ref, 'ivdt') && bone
+        
+        % Update the fixed image to only include values above 1.10 g/cc
+        refMask = refMask .* ceil((interp1(ref.ivdt(:,1), ref.ivdt(:,2), ...
+            ref.data, 'linear', 'extrap') - bonethresh) / 1e3);
+        
+    % Otherwise, include all densities above the threshold
+    elseif isfield(ref, 'ivdt')
+
+        % Update the fixed image to only include values above 0.6 g/cc
+        refMask = refMask .* ceil((interp1(ref.ivdt(:,1), ref.ivdt(:,2), ...
+            ref.data, 'linear', 'extrap') - bodythresh) / 1e3);
+    end
+    
+    %% Write reference MHA file
     % Generate a temprary filename for the reference image
     refFilename = [tempname, '.mha'];
     
@@ -167,54 +208,8 @@ case 'PLASTIMATCH'
     if exist('Event', 'file') == 2  
         Event(['Reference image written to ', refFilename]);
     end
-    
-    %% Build mask for reference image (excluding outside MVCT FOV)
-    % Initialize null array of the same size as the reference image
-    refMask = zeros(ref.dimensions);
-    
-    % Create meshgrid the same size as one image
-    [x,y] = meshgrid(ref.start(1):ref.width(1):...
-        ref.start(1) + ref.width(1) * ...
-        (ref.dimensions(1) - 1), ref.start(2):...
-        ref.width(2):ref.start(2) + ...
-        ref.width(2) * (ref.dimensions(2) - 1));
-    
-    % Loop through each reference image slice
-    for i = 1:ref.dimensions(3)
-        
-        % If the reference slice IEC-Y coordinate value is within the new
-        % image slice range
-        if ref.start(3)+(i*ref.width(3)) > ...
-                new.start(3) && ref.start(3) + (i * ...
-                ref.width(3)) < new.start(3) + ...
-                new.dimensions(3) * new.width(3)
-            
-            % Set the mask to 1 within the new image FOV
-            refMask(:,:,i) = sqrt(x.^2+y.^2) < newFOV/2 - 0.1;
-        end
-    end
-    
-    % If the bone flag is enabled, only include bone densities
-    if isfield(ref, 'ivdt') && bone
-        
-        % Convert to density
-        fixed = interp1(ref.ivdt(:,1), ref.ivdt(:,2), ref.data, ...
-            'linear', 'extrap');
-        
-        % Update the fixed image to only include values above 1.10 g/cc
-        refMask = refMask .* ceil((fixed - bonethresh) / 1e3);
-        
-    % Otherwise, include all densities above the threshold
-    elseif isfield(ref, 'ivdt')
-        
-        % Convert to density
-        fixed = interp1(ref.ivdt(:,1), ref.ivdt(:,2), ref.data, ...
-            'linear', 'extrap');
-        
-        % Update the fixed image to only include values above 0.6 g/cc
-        refMask = refMask .* ceil((fixed - bodythresh) / 1e3);
-    end
-    
+   
+    %% Write reference mask MHA file
     % Generate a temporary file name for the reference image mask
     refMaskFilename = [tempname, '.mha'];
     
@@ -251,7 +246,44 @@ case 'PLASTIMATCH'
     fclose(fid);
     Event(['Reference mask image written to ', refMaskFilename]); 
     
-    %% Build new MHA file
+    %% Build new image (excluding outside FOV)
+    % Initialize null array of the same size as the new image
+    newMask = zeros(new.dimensions);
+    
+    % Create meshgrid the same size as one image
+    [x,y] = meshgrid(new.start(1):new.width(1):...
+        new.start(1) + new.width(1) * ...
+        (new.dimensions(1) - 1), new.start(2):...
+        new.width(2):new.start(2) + ...
+        new.width(2) * (new.dimensions(2) - 1));
+    
+    % Set the first mask slice to one within the FOV
+    newMask(:,:,1) = sqrt(x.^2+y.^2) < newFOV/2 - 0.1;
+    
+    % Loop through each slice
+    for i = 2:new.dimensions(3)
+        
+        % Copy the new mask to each slice
+        newMask(:,:,i) = newMask(:,:,1);
+    end
+    
+    % If the bone flag is enabled, only include bone densities
+    if isfield(new, 'ivdt') && bone
+
+        % Update the fixed image to only include values above 1.10 g/cc
+        newMask = newMask .* ceil((interp1(new.ivdt(:,1), new.ivdt(:,2), ...
+            new.data, 'linear', 'extrap') - bonethresh) / 1e3);
+        
+    % Otherwise, include all densities above the threshold
+    elseif isfield(new, 'ivdt')
+  
+        
+        % Update the fixed image to only include values above 0.6 g/cc
+        newMask = newMask .* ceil((interp1(new.ivdt(:,1), new.ivdt(:,2), ...
+            new.data, 'linear', 'extrap') - bodythresh) / 1e3);
+    end
+    
+    %% Write new image MHA file
     % Generate a temporary file name for the new image
     newFilename = [tempname, '.mha'];
     
@@ -295,48 +327,7 @@ case 'PLASTIMATCH'
     % Log where the new file was saved
     Event(['New image written to ', newFilename]);
     
-    %% Build mask for new image (excluding outside FOV)
-    % Initialize null array of the same size as the new image
-    newMask = zeros(new.dimensions);
-    
-    % Create meshgrid the same size as one image
-    [x,y] = meshgrid(new.start(1):new.width(1):...
-        new.start(1) + new.width(1) * ...
-        (new.dimensions(1) - 1), new.start(2):...
-        new.width(2):new.start(2) + ...
-        new.width(2) * (new.dimensions(2) - 1));
-    
-    % Set the first mask slice to one within the FOV
-    newMask(:,:,1) = sqrt(x.^2+y.^2) < newFOV/2 - 0.1;
-    
-    % Loop through each slice
-    for i = 2:new.dimensions(3)
-        
-        % Copy the new mask to each slice
-        newMask(:,:,i) = newMask(:,:,1);
-    end
-    
-    % If the bone flag is enabled, only include bone densities
-    if isfield(new, 'ivdt') && bone
-        
-        % Convert to density
-        moving = interp1(new.ivdt(:,1), new.ivdt(:,2), new.data, ...
-            'linear', 'extrap');
-        
-        % Update the fixed image to only include values above 1.10 g/cc
-        newMask = newMask .* ceil((moving - bonethresh) / 1e3);
-        
-    % Otherwise, include all densities above the threshold
-    elseif isfield(new, 'ivdt')
-        
-        % Convert to density
-        moving = interp1(new.ivdt(:,1), new.ivdt(:,2), new.data, ...
-            'linear', 'extrap');
-        
-        % Update the fixed image to only include values above 0.6 g/cc
-        newMask = newMask .* ceil((moving - bodythresh) / 1e3);
-    end
-    
+    %% Write new mask MHA file
     % Generate a temporary file name for the new image mask
     newMaskFilename = [tempname, '.mha'];
     
@@ -581,7 +572,12 @@ case 'MATLAB'
         
         % Update the fixed image to only include values above 0.6 g/cc
         fixed = ref.data .* ceil((fixed - bodythresh) / 1e3);
+    
+    % Otherwise just store raw data
+    else
+        fixed = ref.data;
     end
+        
     
     %% Set fixed (reference) image and reference coordinates
     % Generate a reference meshgrid in the x, y, and z dimensions using the
@@ -614,6 +610,10 @@ case 'MATLAB'
         
         % Update the fixed image to only include values above 0.6 g/cc
         moving = new.data .* ceil((moving - bodythresh) / 1e3);
+    
+    % Otherwise just store raw data
+    else
+        moving = new.data;
     end
     
     % Generate a reference meshgrid in the x, y, and z dimensions using the
