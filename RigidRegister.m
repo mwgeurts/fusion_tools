@@ -446,19 +446,46 @@ case 'PLASTIMATCH'
     if exist('Event', 'file') == 2  
         Event(['Executing plastimatch register ', commandFile]);
     end
+        
+    % Check for location of plastimatch using FunctionWhich()
+    executable = FunctionWhich('plastimatch');
     
-    % Execute plastimatch using system call, saving the output and status
-    [status, cmdout] = system(['plastimatch register ', commandFile]);
+    % If plastimatch exists
+    if ~isempty(executable)
     
+        % Execute plastimatch using system call, saving the output and status
+        [status, cmdout] = system([executable, ' register ', commandFile]);
+    
+    else
+        
+        % Otherwise, plastimatch can't be found
+        if exist('Event', 'file') == 2
+            Event(['The plastimatch executable cannot be found. Plastimatch', ...
+                'must be installed to a folder within the system path or ', ...
+                'compiled locally to bin/.'], 'ERROR');
+        else
+            error(['The plastimatch executable cannot be found. Plastimatch', ...
+                'must be installed to a folder within the system path or ', ...
+                'compiled locally to bin/.']);
+        end
+    end
+        
     % If the status == 0, the command completed successfully
     if status == 0
         
         % Log output
-        Event(cmdout);
+        if exist('Event', 'file') == 2
+            Event(cmdout);
+        end
     else
+        
         % Otherwise, plastimatch didn't complete succesfully, so log the 
         % resulting command output as an error
-        Event(cmdout, 'ERROR');
+        if exist('Event', 'file') == 2
+            Event(cmdout, 'ERROR');
+        else
+            error(cmdout);
+        end
     end
     
     % Clear temporary variables
