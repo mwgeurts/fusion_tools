@@ -53,6 +53,7 @@ executable = '';
 % path. Paths are relative to this function.
 paths = {
     'mac'       'bin64/plastimatch-mac-1.6.4'
+    'win'       'bin64/plastimatch-win-1.6.4'
 };
 
 % Determine path of current application
