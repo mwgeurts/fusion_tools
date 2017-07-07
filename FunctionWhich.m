@@ -52,7 +52,7 @@ executable = '';
 % array is the machine type (linux, mac, or win), and the second is the
 % path. Paths are relative to this function.
 paths = {
-    'mac'       'plastimatch-mac-1.6.4/bin64'
+    'mac'       'bin64/plastimatch-mac-1.6.4'
 };
 
 % Determine path of current application
