@@ -46,12 +46,20 @@ if exist('Event', 'file') == 2
     Event('Writing report header', 'UNIT');
 end
 
+% If executable is a function handle
+if isa(testCase.executable,'function_handle')
+    name = func2str(testCase.executable);
+
+% Otherwise, if a string
+else isa(testCase.executable,'char')
+    name = testCase.executable;
+end
+
 fprintf(fid, ['The principal features of %s have been tested between ', ...
     'versions for a set of test suites to determine if regressions have ', ...
     'been introduced which may effect the results. These results are ', ...
     'summarized below, grouped by test suite. Note that pre-releases have ', ...
-    'not been included in this unit testing.\n\n'], ...
-    func2str(testCase.executable));
+    'not been included in this unit testing.\n\n'], name);
 
 fprintf(fid, ['Unit tests developed for performance requirements are ', ...
     'separated from functional or interface tests (even if they execute ', ...
@@ -215,9 +223,22 @@ end
 % Initialize file list with currentApp
 fList = cell(0);
 
-% Run requiredFilesAndProducts to get function names
-f = matlab.codetools.requiredFilesAndProducts(...
+% If executable is a function handle
+if isa(testCase.executable,'function_handle')
+    
+    % Run requiredFilesAndProducts to get function names
+    f = matlab.codetools.requiredFilesAndProducts(...
     [func2str(testCase.executable), '.m']);
+
+% Otherwise, if a string, assume it is a directory
+elseif isa(testCase.executable,'char')
+    
+    % Get all matlab files in this directory
+    d = struct2cell(dir([pwd, '/*.m']));
+    
+    % Run requiredFilesAndProducts to get function names
+    f = matlab.codetools.requiredFilesAndProducts(d(1,:));
+end
 
 % Log number of functions found in current application
 if exist('Event', 'file') == 2
@@ -261,7 +282,7 @@ for i = 1:size(testCase.stats.FunctionTable, 1)
     [path, name, ~] = fileparts(testCase.stats.FunctionTable(i).FileName);
 
     % Save the relative path
-    relname = [strrep(path, [pwd, '/'], ''), '/', name];
+    relname = [strrep(path, pwd, ''), name];
     
     % Loop through the file list
     for j = 1:length(fList)

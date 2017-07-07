@@ -24,8 +24,8 @@ classdef UnitTest < matlab.unittest.TestCase
     % Define UnitTest class properties
     properties
 
-        % executable stores the name of the application
-        executable = @fusion_tools
+        % executable stores the application handle or directory name
+        executable = 'fusion_tools'
         
         % configFile stores the name of the config file relative path
         configFile = ''
@@ -93,10 +93,12 @@ classdef UnitTest < matlab.unittest.TestCase
         sl = SLOC(file)
         image = LoadDICOMImages(path)
         varargout = StoreResults(varargin)
+        modimage = ApplyRigidReg(image, v)
     end
     
     % Define unit tests
     methods(Test, TestTags = {'Unit'})
         Test01(testCase)
+        Test02(testCase)
     end
 end
