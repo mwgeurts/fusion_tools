@@ -1,6 +1,4 @@
 *.m~
 .DS_STORE
 log.txt
-build/ITK/*
-build/plastimatch/*
-build/CMake/*
+build/*
