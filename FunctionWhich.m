@@ -54,6 +54,7 @@ executable = '';
 paths = {
     'mac'       'bin64/plastimatch-mac-1.6.4'
     'win'       'bin64/plastimatch-win-1.6.4'
+    'linux'     'bin64/plastimatch-linux-1.6.4'
 };
 
 % Determine path of current application
