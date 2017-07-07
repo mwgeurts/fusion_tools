@@ -1,21 +1,21 @@
-function rigid = RigidRegister(ref, new, varargin)
-% RigidRegister rigidly registers a new CT image to a reference image. 
+function rigid = RigidRegister(ref, target, varargin)
+% RigidRegister rigidly registers a target CT image to a reference image. 
 % This function supports both MATLAB and Plastimatch-based registration.
 % The type of registration and basic parameters can be provided 
 %
 % If CT to density tables are provided, the reference image is converted 
-% to new-equivalent by first interpolating to density using the reference 
+% to target-equivalent by first interpolating to density using the reference 
 % IVDT and then subsequently interpolating back to image value using the 
-% new IVDT.
+% target IVDT.
 %
 % The following variables are required for proper execution: 
 %
 %   ref:        structure containing the image data, dimensions, width,
-%               start coordinates, and IVDT. See tomo_extract\LoadImage for 
-%               an example of this format
-%   new:        structure containing the image data, dimensions, width,
-%               start coordinates and IVDT. See tomo_extract\LoadDailyImage
-%               for an example of this format.
+%               start coordinates, and IVDT. See tomo_extract or dicom_tools
+%               submodules for more documentation on this file format.
+%   target:     structure containing the image data, dimensions, width,
+%               start coordinates and IVDT. See tomo_extract or dicom_tools
+%               submodules for more documentation on this file format.
 %
 % In addition, the following options may be provided as name/value pairs.
 % If not defined, the registration will be MATLAB using MSE.
@@ -28,8 +28,9 @@ function rigid = RigidRegister(ref, new, varargin)
 %               bony anatomy (true) or full image (false). If not provided,
 %               will default to full image. This flag only has an effect if
 %               IVDT tables are provided.
-%   levels:     the number of levels to use during optimization.
-%               Plastimatch is configured to support up to 3 levels.
+%   levels:     the number of levels to use during optimization. For
+%               Plastimatch, each level multiplies the voxel size by 2
+%               
 %   iterations: number of iterations to run at each level.
 %
 % The following variables are returned upon succesful completion:
@@ -57,8 +58,8 @@ function rigid = RigidRegister(ref, new, varargin)
 method = 'MATLAB';
 metric = 'MSE';
 bone = false;
-levels = 3;
-iterations = 30;
+levels = 5;
+iterations = 50;
 bonethresh = 1.1;
 bodythresh = 0.6;
 
@@ -82,12 +83,12 @@ end
 if exist('Event', 'file') == 2 && bone
     
     % Note use of bony anatomy to event log
-    Event('Registering reference and new images using bony anatomy');
+    Event('Registering reference and target images using bony anatomy');
     
 elseif exist('Event', 'file') == 2    
     
     % Note use of full image to event log
-    Event('Registering reference and new images using full image');
+    Event('Registering reference and target images using full image');
 end
     
 % Log which registration method was chosen
@@ -96,19 +97,6 @@ if exist('Event', 'file') == 2
     
     % Start timer
     t = tic;
-end
-
-% If IVDT data exists
-if isfield(ref, 'ivdt') && isfield(new, 'ivdt')
-    
-    % Convert reference image to equivalent new-IVDT image
-    ref.data = interp1(new.ivdt(:,2), new.ivdt(:,1), interp1(ref.ivdt(:,1), ...
-        ref.ivdt(:,2), ref.data, 'linear', 'extrap'), 'linear', 'extrap');
-
-    % Note conversion in log
-    if exist('Event', 'file') == 2  
-        Event('Reference converted to equivalent image values using IVDT');
-    end
 end
 
 % Execute registration based on method variable
@@ -126,27 +114,31 @@ case 'PLASTIMATCH'
     % Initialize null array of the same size as the reference image
     refMask = zeros(ref.dimensions);
     
-    % Create meshgrid the same size as one image
-    [x,y] = meshgrid(ref.start(1):ref.width(1):...
-        ref.start(1) + ref.width(1) * ...
-        (ref.dimensions(1) - 1), ref.start(2):...
-        ref.width(2):ref.start(2) + ...
-        ref.width(2) * (ref.dimensions(2) - 1));
-    
-    % Loop through each reference image slice
-    for i = 1:ref.dimensions(3)
-        
-        % If the reference slice IEC-Y coordinate value is within the new
-        % image slice range
-        if ref.start(3)+(i*ref.width(3)) > ...
-                new.start(3) && ref.start(3) + (i * ...
-                ref.width(3)) < new.start(3) + ...
-                new.dimensions(3) * new.width(3)
-            
-            % Set the mask to 1 within the new image FOV
-            refMask(:,:,i) = sqrt(x.^2+y.^2) < newFOV/2 - 0.1;
-        end
+    % If an FOV field does not exist
+    if ~isfield(ref, 'FOV')
+
+        % Calculate FOV from minimum image dimension
+        ref.FOV = min([ref.dimensions(1) * ref.width(1) ...
+            ref.dimensions(2) * ref.width(2)]);
     end
+    
+    % Create meshgrid the same size as one image
+    [x,y] = meshgrid(((1:ref.dimensions(1)) - ref.dimensions(1)/2) ...
+        * ref.width(1), ((1:ref.dimensions(2)) - ...
+        ref.dimensions(2)/2) * ref.width(2));
+    
+    % Set the first mask slice to one within the FOV
+    refMask(:,:,1) = (sqrt(x.^2+y.^2) < ref.FOV/2 - 0.1)';
+    
+    % Loop through each slice
+    for i = 2:ref.dimensions(3)
+        
+        % Copy the target mask to each slice
+        refMask(:,:,i) = refMask(:,:,1);
+    end
+    
+    % Clear temporary variables
+    clear x y;
     
     % If the bone flag is enabled, only include bone densities
     if isfield(ref, 'ivdt') && bone
@@ -161,6 +153,21 @@ case 'PLASTIMATCH'
         % Update the fixed image to only include values above 0.6 g/cc
         refMask = refMask .* ceil((interp1(ref.ivdt(:,1), ref.ivdt(:,2), ...
             ref.data, 'linear', 'extrap') - bodythresh) / 1e3);
+    end
+    
+    % If IVDT data exists
+    if isfield(ref, 'ivdt') && isfield(target, 'ivdt')
+
+        % Convert reference image to equivalent target-IVDT image
+        ref.data = interp1(target.ivdt(:,2), target.ivdt(:,1), ...
+            interp1(ref.ivdt(:,1), ref.ivdt(:,2), ref.data, ...
+            'linear', 'extrap'), 'linear', 'extrap');
+
+        % Note conversion in log
+        if exist('Event', 'file') == 2  
+            Event(['Reference converted to equivalent image ', ...
+                'values using IVDT']);
+        end
     end
     
     %% Write reference MHA file
@@ -183,14 +190,15 @@ case 'PLASTIMATCH'
     % Specify the byte order as little
     fprintf(fid,'ElementByteOrderMSB=False\n');
     
-    % Specify the reference voxel widths (in mm)
-    fprintf(fid, 'ElementSize=%i %i %i\n', ref.width*10);
+    % Specify the reference voxel widths
+    fprintf(fid, 'ElementSize=%i %i %i\n', ref.width);
     
-    % Specify the reference voxel spacing to equal the widths (in mm)
-    fprintf(fid, 'ElementSpacing=%i %i %i\n', ref.width*10);
+    % Specify the reference voxel spacing to equal the widths
+    fprintf(fid, 'ElementSpacing=%i %i %i\n', ref.width);
     
-    % Specify the coordinate frame origin (in mm)
-    fprintf(fid, 'Origin=%i %i %i\n', ref.start*10);
+    % Specify the coordinate frame origin
+    fprintf(fid, 'Origin=%i %i %i\n', [ref.start(1) -(ref.start(2) + ...
+        ref.width(2) * (ref.dimensions(2)-1)) ref.start(3)]);
     
     % Complete the .mha file header
     fprintf(fid, 'ElementDataFile=LOCAL\n');
@@ -229,14 +237,15 @@ case 'PLASTIMATCH'
     % Specify the byte order as little
     fprintf(fid,'ElementByteOrderMSB=False\n');
     
-    % Specify the reference voxel widths (in mm)
-    fprintf(fid, 'ElementSize=%i %i %i\n', ref.width*10);
+    % Specify the reference voxel widths
+    fprintf(fid, 'ElementSize=%i %i %i\n', ref.width);
     
-    % Specify the merged voxel spacing to equal the widths (in mm)
-    fprintf(fid, 'ElementSpacing=%i %i %i\n', ref.width*10);
+    % Specify the merged voxel spacing to equal the widths
+    fprintf(fid, 'ElementSpacing=%i %i %i\n', ref.width);
     
-    % Specify the coordinate frame origin (in mm)
-    fprintf(fid, 'Origin=%i %i %i\n', ref.start*10);
+    % Specify the coordinate frame origin
+    fprintf(fid, 'Origin=%i %i %i\n', [ref.start(1) -(ref.start(2) + ...
+        ref.width(2) * (ref.dimensions(2)-1)) ref.start(3)]);
     
     % Complete the .mha file header
     fprintf(fid, 'ElementDataFile=LOCAL\n');
@@ -244,58 +253,69 @@ case 'PLASTIMATCH'
     % Write the reference image mask data to the temporary file as uint16
     fwrite(fid, refMask, 'ushort', 0, 'l');
     fclose(fid);
-    Event(['Reference mask image written to ', refMaskFilename]); 
-    
-    %% Build new image (excluding outside FOV)
-    % Initialize null array of the same size as the new image
-    newMask = zeros(new.dimensions);
-    
-    % Create meshgrid the same size as one image
-    [x,y] = meshgrid(new.start(1):new.width(1):...
-        new.start(1) + new.width(1) * ...
-        (new.dimensions(1) - 1), new.start(2):...
-        new.width(2):new.start(2) + ...
-        new.width(2) * (new.dimensions(2) - 1));
-    
-    % Set the first mask slice to one within the FOV
-    newMask(:,:,1) = sqrt(x.^2+y.^2) < newFOV/2 - 0.1;
-    
-    % Loop through each slice
-    for i = 2:new.dimensions(3)
-        
-        % Copy the new mask to each slice
-        newMask(:,:,i) = newMask(:,:,1);
+    if exist('Event', 'file') == 2  
+        Event(['Reference mask image written to ', refMaskFilename]); 
     end
     
+    %% Build target image (excluding outside FOV)
+    % Initialize null array of the same size as the target image
+    targetMask = zeros(target.dimensions);
+    
+    % If an FOV field does not exist
+    if ~isfield(target, 'FOV')
+
+        % Calculate FOV from minimum image dimension
+        target.FOV = min([target.dimensions(1) * target.width(1) ...
+            target.dimensions(2) * target.width(2)]);
+    end
+    
+    % Create meshgrid the same size as one image
+    [x,y] = meshgrid(((1:target.dimensions(1)) - target.dimensions(1)/2) ...
+        * target.width(1), ((1:target.dimensions(2)) - ...
+        target.dimensions(2)/2) * target.width(2));
+    
+    % Set the first mask slice to one within the FOV
+    targetMask(:,:,1) = (sqrt(x.^2+y.^2) < target.FOV/2 - 0.1)';
+    
+    % Loop through each slice
+    for i = 2:target.dimensions(3)
+        
+        % Copy the target mask to each slice
+        targetMask(:,:,i) = targetMask(:,:,1);
+    end
+    
+    % Clear temporary variables
+    clear x y;
+    
     % If the bone flag is enabled, only include bone densities
-    if isfield(new, 'ivdt') && bone
+    if isfield(target, 'ivdt') && bone
 
         % Update the fixed image to only include values above 1.10 g/cc
-        newMask = newMask .* ceil((interp1(new.ivdt(:,1), new.ivdt(:,2), ...
-            new.data, 'linear', 'extrap') - bonethresh) / 1e3);
+        targetMask = targetMask .* ceil((interp1(target.ivdt(:,1), target.ivdt(:,2), ...
+            target.data, 'linear', 'extrap') - bonethresh) / 1e3);
         
     % Otherwise, include all densities above the threshold
-    elseif isfield(new, 'ivdt')
+    elseif isfield(target, 'ivdt')
   
         
         % Update the fixed image to only include values above 0.6 g/cc
-        newMask = newMask .* ceil((interp1(new.ivdt(:,1), new.ivdt(:,2), ...
-            new.data, 'linear', 'extrap') - bodythresh) / 1e3);
+        targetMask = targetMask .* ceil((interp1(target.ivdt(:,1), target.ivdt(:,2), ...
+            target.data, 'linear', 'extrap') - bodythresh) / 1e3);
     end
     
-    %% Write new image MHA file
-    % Generate a temporary file name for the new image
-    newFilename = [tempname, '.mha'];
+    %% Write target image MHA file
+    % Generate a temporary file name for the target image
+    targetFilename = [tempname, '.mha'];
     
-    % Open a write file handle to the temporary new image
-    fid = fopen(newFilename, 'w', 'l');
+    % Open a write file handle to the temporary target image
+    fid = fopen(targetFilename, 'w', 'l');
     
     % Start writing the ITK header
     fprintf(fid, 'ObjectType=Image\n');
     fprintf(fid, 'NDims=3\n');
     
     % Specify the dimensions of the merged image
-    fprintf(fid, 'DimSize=%i %i %i\n', new.dimensions);
+    fprintf(fid, 'DimSize=%i %i %i\n', target.dimensions);
     
     % Specify the data format (USHORT referring to unsigned 16-bit integer)
     fprintf(fid, 'ElementType=MET_USHORT\n');
@@ -303,20 +323,21 @@ case 'PLASTIMATCH'
     % Specify the byte order as little
     fprintf(fid, 'ElementByteOrderMSB=False\n');
     
-    % Specify the new voxel widths (in mm)
-    fprintf(fid, 'ElementSize=%i %i %i\n', new.width*10);
+    % Specify the target voxel widths
+    fprintf(fid, 'ElementSize=%i %i %i\n', target.width);
     
-    % Specify the new voxel spacing to equal the widths (in mm)
-    fprintf(fid, 'ElementSpacing=%i %i %i\n', new.width*10);
+    % Specify the target voxel spacing to equal the widths
+    fprintf(fid, 'ElementSpacing=%i %i %i\n', target.width);
     
-    % Specify the coordinate frame origin (in mm)
-    fprintf(fid, 'Origin=%i %i %i\n', new.start*10);
+    % Specify the coordinate frame origin
+    fprintf(fid, 'Origin=%i %i %i\n', [target.start(1) -(target.start(2) + ...
+        target.width(2) * (target.dimensions(2)-1)) target.start(3)]);
     
     % Complete the .mha file header
     fprintf(fid, 'ElementDataFile=LOCAL\n');
     
     % Write the merged image data to the temporary file as uint16
-    fwrite(fid, new.data, 'uint16', 0, 'l');
+    fwrite(fid, target.data, 'uint16', 0, 'l');
     
     % Close the file handle
     fclose(fid);
@@ -324,22 +345,24 @@ case 'PLASTIMATCH'
     % Clear the temporary variable
     clear fid;
     
-    % Log where the new file was saved
-    Event(['New image written to ', newFilename]);
+    % Log where the target file was saved
+    if exist('Event', 'file') == 2  
+        Event(['Target image written to ', targetFilename]);
+    end
+        
+    %% Write target mask MHA file
+    % Generate a temporary file name for the target image mask
+    targetMaskFilename = [tempname, '.mha'];
     
-    %% Write new mask MHA file
-    % Generate a temporary file name for the new image mask
-    newMaskFilename = [tempname, '.mha'];
-    
-    % Open a write file handle to the temporary new image mask
-    fid = fopen(newMaskFilename, 'w', 'l');
+    % Open a write file handle to the temporary target image mask
+    fid = fopen(targetMaskFilename, 'w', 'l');
     
     % Start writing the ITK header
     fprintf(fid, 'ObjectType=Image\n');
     fprintf(fid, 'NDims=3\n');
     
-    % Specify the dimensions of the new image mask
-    fprintf(fid, 'DimSize=%i %i %i\n', new.dimensions);
+    % Specify the dimensions of the target image mask
+    fprintf(fid, 'DimSize=%i %i %i\n', target.dimensions);
     
     % Specify the data format (USHORT referring to unsigned 16-bit integer)
     fprintf(fid, 'ElementType=MET_USHORT\n');
@@ -347,20 +370,21 @@ case 'PLASTIMATCH'
     % Specify the byte order as little
     fprintf(fid,'ElementByteOrderMSB=False\n');
     
-    % Specify the new voxel widths (in mm)
-    fprintf(fid, 'ElementSize=%i %i %i\n', new.width*10);
+    % Specify the target voxel widths
+    fprintf(fid, 'ElementSize=%i %i %i\n', target.width);
     
-    % Specify the new voxel spacing to equal the widths (in mm)
-    fprintf(fid, 'ElementSpacing=%i %i %i\n', new.width*10);
+    % Specify the target voxel spacing to equal the widths
+    fprintf(fid, 'ElementSpacing=%i %i %i\n', target.width);
     
-    % Specify the coordinate frame origin (in mm)
-    fprintf(fid, 'Origin=%i %i %i\n', new.start*10);
+    % Specify the coordinate frame origin
+    fprintf(fid, 'Origin=%i %i %i\n', [target.start(1) -(target.start(2) + ...
+        target.width(2) * (target.dimensions(2)-1)) target.start(3)]);
     
     % Complete the .mha file header
     fprintf(fid, 'ElementDataFile=LOCAL\n');
     
     % Write the merged image mask data to the temporary file as uint16
-    fwrite(fid, newMask, 'ushort', 0, 'l');
+    fwrite(fid, targetMask, 'ushort', 0, 'l');
     
     % Close the file handle
     fclose(fid);
@@ -368,9 +392,9 @@ case 'PLASTIMATCH'
     % Clear the temporary variable
     clear fid;
     
-    % Log where the new mask file was saved
+    % Log where the target mask file was saved
     if exist('Event', 'file') == 2  
-        Event(['New mask image written to ', newMaskFilename]);
+        Event(['Target mask image written to ', targetMaskFilename]);
     end
     
     %% Build plastimatch command file
@@ -383,29 +407,25 @@ case 'PLASTIMATCH'
     % Specify the inputs to the registration
     fprintf(fid, '[GLOBAL]\n');
     fprintf(fid, 'fixed=%s\n', refFilename);
-    fprintf(fid, 'moving=%s\n', newFilename);
+    fprintf(fid, 'moving=%s\n', targetFilename);
     fprintf(fid, 'fixed_mask=%s\n', refMaskFilename);
-    fprintf(fid, 'moving_mask=%s\n', newMaskFilename);
+    fprintf(fid, 'moving_mask=%s\n', targetMaskFilename);
     
     % Generate a temporary filename for the resulting coefficients
     adjustments = [tempname, '.txt'];
     
     % Specify the output file
     fprintf(fid, 'xform_out=%s\n', adjustments);
-    
-    % If at least two levels are requested
-    if levels >= 3
-    
-        % Specify stage 1 deformable image registration parameters.  Refer to 
-        % http://plastimatch.org/registration_command_file_reference.html for
-        % more information on these parameters
-        fprintf(fid, '[STAGE]\n');
-        fprintf(fid, 'xform=align_center\n');
-    end
-    
-    % If at least two levels are requested
-    if levels >= 2
-        
+
+    % Specify stage 1 deformable image registration parameters.  Refer to 
+    % http://plastimatch.org/registration_command_file_reference.html for
+    % more information on these parameters
+    fprintf(fid, '[STAGE]\n');
+    fprintf(fid, 'xform=align_center\n');
+
+    % Write each level
+    for i = levels:-1:1
+  
         % Specify stage 2 parameters
         fprintf(fid, '[STAGE]\n');
         fprintf(fid, 'impl=plastimatch\n');
@@ -414,32 +434,23 @@ case 'PLASTIMATCH'
         switch metric
             case 'MI'
                 fprintf(fid, 'metric=mi\n');
+            case 'GM'
+                fprintf(fid, 'metric=gm\n');
             otherwise
                 fprintf(fid, 'metric=mse\n');
         end
-        fprintf(fid, 'max_its=%i\n', iterations);
-        fprintf(fid, 'min_step=0.1\n');
-        fprintf(fid, 'res=4 4 2\n');
+        fprintf(fid, 'max_its=%i\n', iterations * 2^(i-1));
+        fprintf(fid, 'max_step=%0.3e\n', ref.width(1)/10 * 2^i);
+        fprintf(fid, 'min_step=%0.3e\n', ref.width(1)/1000 * 2^i);
+        fprintf(fid, 'res=%i %i %i\n', 2^(i-1), 2^(i-1), 2^(i-1));
         fprintf(fid, 'threading=cuda\n');
     end
-
-    % Specify stage 3 parameters
-    fprintf(fid, '[STAGE]\n');
-    fprintf(fid, 'impl=plastimatch\n');
-    fprintf(fid, 'xform=rigid\n');
-    fprintf(fid, 'optim=versor\n');
-    switch metric
-        case 'MI'
-            fprintf(fid, 'metric=mi\n');
-        case 'GM'
-            fprintf(fid, 'metric=gm\n');
-        otherwise
-            fprintf(fid, 'metric=mse\n');
-    end
-    fprintf(fid, 'max_its=%i\n', iterations);
-    fprintf(fid, 'min_step=0.1\n');
-    fprintf(fid, 'res=1 1 1\n');
-    fprintf(fid, 'threading=cuda\n');
+    
+    % Close file
+    fclose(fid);
+    
+    % Clear the temporary variable
+    clear fid;
     
     %% Run plastimatch
     % Log execution of system call
@@ -461,11 +472,11 @@ case 'PLASTIMATCH'
         % Otherwise, plastimatch can't be found
         if exist('Event', 'file') == 2
             Event(['The plastimatch executable cannot be found. Plastimatch', ...
-                'must be installed to a folder within the system path or ', ...
+                ' must be installed to a folder within the system path or ', ...
                 'compiled locally to bin/.'], 'ERROR');
         else
             error(['The plastimatch executable cannot be found. Plastimatch', ...
-                'must be installed to a folder within the system path or ', ...
+                ' must be installed to a folder within the system path or ', ...
                 'compiled locally to bin/.']);
         end
     end
@@ -476,6 +487,8 @@ case 'PLASTIMATCH'
         % Log output
         if exist('Event', 'file') == 2
             Event(cmdout);
+        else
+            fprintf('%s', cmdout);
         end
     else
         
@@ -493,7 +506,7 @@ case 'PLASTIMATCH'
     
     %% Read in registration result
     % Open file handle to temporary file
-    fid = fopen(adj, 'r');
+    fid = fopen(adjustments, 'r');
     
     % Retrieve the first line of the result text
     tline = fgetl(fid);
@@ -505,14 +518,21 @@ case 'PLASTIMATCH'
     % Start a while loop to read in result text
     while ischar(tline)
         
+        % Trim whitespace
+        tline = strtrim(tline);
+        
         % Search for the text line containing the rigid registration,
         % storing the results and flag if the results are found
-        [rigid, flag1] = sscanf(tline, ...
-            '\nParameters: %f %f %f %f %f %f\n');
+        if length(tline) > 11 && strcmp(tline(1:11), 'Parameters:')
+            [r, flag1] = sscanf(tline, ...
+                'Parameters: %f %f %f %f %f %f');
+        end
         
         % Search for the text line containing the rigid registration
         % origin, storing the origin and flag if the origin is found
-        [origin, flag2] = sscanf(tline, '\nFixedParameters: %f %f %f\n');
+        if length(tline) > 16 && strcmp(tline(1:16), 'FixedParameters:')
+            [origin, flag2] = sscanf(tline, 'FixedParameters: %f %f %f');
+        end
         
         % Read in the next line of the results file
         tline = fgetl(fid);
@@ -526,24 +546,26 @@ case 'PLASTIMATCH'
     
     % If both flags are set, the results were successfully found
     if flag1 > 0 && flag2 > 0
+ 
+        % Log success
+        if exist('Event', 'file') == 2  
+            Event(['Plastimatch results read from ', adjustments]);
+        end
+    else
         
         % Log an error indicating the the results were not parsed
         % correctly.  This usually indicates the registration failed
         if exist('Event', 'file') == 2  
-            Event(['Unable to parse plastimatch results from ', adj], ...
-                'ERROR'); 
+            Event(['Unable to parse plastimatch results from ', ...
+                adjustments], 'ERROR'); 
         else
-            error(['Unable to parse plastimatch results from ', adj]);
+            error(['Unable to parse plastimatch results from ', ...
+                adjustments]);
         end
-        
-    elseif exist('Event', 'file') == 2 
-        
-        % Otherwise, log success
-        Event(['Plastimatch results read from ', adj]);
     end
     
     % If the registration origin is not equal to the DICOM center
-    if ~isequal(origin, [0 0 0])
+    if ~isequal(origin, [0;0;0])
         
         % Log an error
         if exist('Event', 'file') == 2 
@@ -558,11 +580,13 @@ case 'PLASTIMATCH'
     % Clear temporary variables
     clear flag1 flag2 origin;
     
-    % Permute registration back to IEC coordinates
-    rigid = -rigid([1 2 3 4 6 5]);
-    
     % Convert rotations to degrees
-    rigid(1:3) = rad2deg(rigid(1:3));
+    rigid(1:3) = -rad2deg(r(1:3) .* [2;-2;2])';
+    
+    % Transpose and flip translations
+    rigid(4) = -r(4);
+    rigid(5) = r(6);
+    rigid(6) = r(5);
     
     % Report registration adjustments
     if exist('Event', 'file') == 2 
@@ -572,8 +596,8 @@ case 'PLASTIMATCH'
     end
     
     % Clear temporary variables
-    clear referenceFilename newFilename referenceMaskFilename ...
-        newMaskFilename adj commandFile;
+    clear referenceFilename targetFilename referenceMaskFilename ...
+        targetMaskFilename adjustments commandFile;
     
 %% Use MATLAB 6-DOF rigid registration
 % This rigid registration technique requires MATLAB's Image Processing
@@ -581,7 +605,7 @@ case 'PLASTIMATCH'
 case 'MATLAB'
     
     % If the bone flag is enabled, only include bone densities
-    if isfield(ref, 'ivdt') && bone
+    if isfield(ref, 'ivdt') && isfield(target, 'ivdt') && bone
         
         % Convert to density
         fixed = interp1(ref.ivdt(:,1), ref.ivdt(:,2), ref.data, ...
@@ -591,7 +615,7 @@ case 'MATLAB'
         fixed = ref.data .* ceil((fixed - bonethresh) / 1e3);
         
     % Otherwise, include all densities above the threshold
-    elseif isfield(ref, 'ivdt')
+    elseif isfield(ref, 'ivdt') && isfield(target, 'ivdt')
         
         % Convert to density
         fixed = interp1(ref.ivdt(:,1), ref.ivdt(:,2), ref.data, ...
@@ -603,8 +627,7 @@ case 'MATLAB'
     % Otherwise just store raw data
     else
         fixed = ref.data;
-    end
-        
+    end     
     
     %% Set fixed (reference) image and reference coordinates
     % Generate a reference meshgrid in the x, y, and z dimensions using the
@@ -617,39 +640,39 @@ case 'MATLAB'
         ref.start(3) + ref.width(3) * ...
         (size(ref.data, 3) - 1)]);
     
-    %% Set moving (new) image and reference coordinates
+    %% Set moving (target) image and reference coordinates
     % If the bone flag is enabled, only include bone densities
-    if isfield(new, 'ivdt') && bone
+    if isfield(ref, 'ivdt') && isfield(target, 'ivdt') && bone
         
         % Convert to density
-        moving = interp1(new.ivdt(:,1), new.ivdt(:,2), new.data, ...
+        moving = interp1(target.ivdt(:,1), target.ivdt(:,2), target.data, ...
             'linear', 'extrap');
         
         % Update the fixed image to only include values above 1.10 g/cc
-        moving = new.data .* ceil((moving - bonethresh) / 1e3);
+        moving = target.data .* ceil((moving - bonethresh) / 1e3);
         
     % Otherwise, include all densities above the threshold
-    elseif isfield(new, 'ivdt')
+    elseif isfield(ref, 'ivdt') && isfield(target, 'ivdt')
         
         % Convert to density
-        moving = interp1(new.ivdt(:,1), new.ivdt(:,2), new.data, ...
+        moving = interp1(target.ivdt(:,1), target.ivdt(:,2), target.data, ...
             'linear', 'extrap');
         
         % Update the fixed image to only include values above 0.6 g/cc
-        moving = new.data .* ceil((moving - bodythresh) / 1e3);
+        moving = target.data .* ceil((moving - bodythresh) / 1e3);
     
     % Otherwise just store raw data
     else
-        moving = new.data;
+        moving = target.data;
     end
     
     % Generate a reference meshgrid in the x, y, and z dimensions using the
     % start and width structure fields
-    Rmoving = imref3d(size(new.data), [new.start(2) new.start(2) + ...
-        new.width(2) * (size(new.data, 2) - 1)], [new.start(1) ...
-        new.start(1) + new.width(1) * (size(new.data, 1) - 1)], ...
-        [new.start(3) new.start(3) + new.width(3) * ...
-        (size(new.data, 3) - 1)]);
+    Rmoving = imref3d(size(target.data), [target.start(2) target.start(2) + ...
+        target.width(2) * (size(target.data, 2) - 1)], [target.start(1) ...
+        target.start(1) + target.width(1) * (size(target.data, 1) - 1)], ...
+        [target.start(3) target.start(3) + target.width(3) * ...
+        (size(target.data, 3) - 1)]);
     
     %% Run rigid registration
     % Initialize Regular Step Gradient Descent MATLAB object
@@ -752,4 +775,4 @@ otherwise
 end
 
 % Clear temporary variables
-clear t ref new method metric bone levels iterations bodythresh bonethresh;
+clear t ref target method metric bone levels iterations bodythresh bonethresh;
