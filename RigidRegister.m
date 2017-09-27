@@ -596,6 +596,22 @@ case 'PLASTIMATCH'
             rigid, toc(t)));
     end
     
+    % Try to delete temp files
+    try
+        delete(refFilename);
+        delete(targetFilename);
+        delete(refMaskFilename);
+        delete(targetMaskFilename);
+    
+    % If it fails, log a warning
+    catch
+        if exist('Event', 'file') == 2 
+            Event('The temporary files were not fully deleted', 'WARN'); 
+        else
+            warning('The temporary files were not fully deleted');
+        end
+    end
+    
     % Clear temporary variables
     clear referenceFilename targetFilename referenceMaskFilename ...
         targetMaskFilename adjustments commandFile;
