@@ -18,6 +18,7 @@ function mod = RigidTransform(image, v)
 %           (converted back to the daily IVDT), transformation matrix, 
 %           dimensions, width, and start coordinates
 %
+% Author: Mark Geurts, mark.w.geurts@gmail.com
 % Copyright (C) 2017 University of Wisconsin Board of Regents
 %
 % This program is free software: you can redistribute it and/or modify it 
