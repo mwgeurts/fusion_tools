@@ -22,7 +22,7 @@ function rigid = RigidRegister(ref, target, varargin)
 %
 %   method:     string contianing the algorithm to use for registration.  
 %               Can be 'PLASTIMATCH' or 'MATLAB'
-%   metric:     string containing metric. Can be 'MSE' 'GM' (plastimatch 
+%   metric:     string containing metric. Can be 'MSE', 'GM' (plastimatch 
 %               only) or 'MI'. If not provided, will default to 'MSE'
 %   bone:       logical indicating whether to mask registration to only 
 %               bony anatomy (true) or full image (false). If not provided,
@@ -39,6 +39,7 @@ function rigid = RigidRegister(ref, target, varargin)
 %               roll x y z], where angles are in degrees and distances are
 %               in cm.
 %
+% Author: Mark Geurts, mark.w.geurts@gmail.com
 % Copyright (C) 2017 University of Wisconsin Board of Regents
 %
 % This program is free software: you can redistribute it and/or modify it 
