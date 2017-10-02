@@ -30,8 +30,9 @@ function rigid = RigidRegister(ref, target, varargin)
 %               IVDT tables are provided.
 %   levels:     the number of levels to use during optimization. For
 %               Plastimatch, each level multiplies the voxel size by 2
-%               
 %   iterations: number of iterations to run at each level.
+%   rotations:  flag indicating whether to include rotations (true) or only
+%               optimize on translations (false)
 %
 % The following variables are returned upon succesful completion:
 %
@@ -63,6 +64,7 @@ levels = 3;
 iterations = 50;
 bonethresh = 1.1;
 bodythresh = 0.6;
+rotations = true;
 
 % Loop through remaining input arguments
 for i = 1:2:length(varargin)
@@ -77,6 +79,8 @@ for i = 1:2:length(varargin)
         levels = varargin{i+1};
     elseif strcmpi(varargin{i}, 'iterations')
         iterations = varargin{i+1};
+    elseif strcmpi(varargin{i}, 'rotations')
+        rotations = varargin{i+1};
     end
 end
 
@@ -103,7 +107,7 @@ end
 % Execute registration based on method variable
 switch method
 
-%% Use Plastimatch 6-DOF rigid registration
+%% Use Plastimatch 3/6-DOF rigid registration
 % This rigid registration technique requires plastimatch be installed
 % on this workstation.  Data is passed to/from plastimatch using the ITK 
 % .mha file format and text command file. See 
@@ -430,7 +434,11 @@ case 'PLASTIMATCH'
         % Specify stage 2 parameters
         fprintf(fid, '[STAGE]\n');
         fprintf(fid, 'impl=plastimatch\n');
-        fprintf(fid, 'xform=rigid\n');
+        if rotations
+            fprintf(fid, 'xform=rigid\n');
+        else
+            fprintf(fid, 'xform=translation\n');
+        end
         fprintf(fid, 'optim=versor\n');
         switch metric
             case 'MI'
@@ -525,13 +533,22 @@ case 'PLASTIMATCH'
         % Search for the text line containing the rigid registration,
         % storing the results and flag if the results are found
         if length(tline) > 11 && strcmp(tline(1:11), 'Parameters:')
-            [r, flag1] = sscanf(tline, ...
-                'Parameters: %f %f %f %f %f %f');
+            if rotations
+                [r, flag1] = sscanf(tline, ...
+                    'Parameters: %f %f %f %f %f %f');
+            else
+                [r, flag1] = sscanf(tline, ...
+                    'Parameters: %f %f %f');
+                r = horzcat([0 0 0], r); %#ok<AGROW>
+                flag2 = 1;
+                origin = [0;0;0];
+            end
         end
         
         % Search for the text line containing the rigid registration
         % origin, storing the origin and flag if the origin is found
-        if length(tline) > 16 && strcmp(tline(1:16), 'FixedParameters:')
+        if rotations && length(tline) > 16 && ...
+                strcmp(tline(1:16), 'FixedParameters:')
             [origin, flag2] = sscanf(tline, 'FixedParameters: %f %f %f');
         end
         
@@ -733,8 +750,15 @@ case 'MATLAB'
     end
     
     % Execute imregtform using 3 resampling levels
-    tform = imregtform(moving, Rmoving, fixed, Rfixed, 'rigid', optimizer, ...
-        metric, 'DisplayOptimization', 1, 'PyramidLevels', levels);
+    if rotations
+        tform = imregtform(moving, Rmoving, fixed, Rfixed, 'rigid', ...
+            optimizer, metric, 'DisplayOptimization', 1, 'PyramidLevels', ...
+            levels);
+    else
+        tform = imregtform(moving, Rmoving, fixed, Rfixed, 'translation', ...
+            optimizer, metric, 'DisplayOptimization', 1, 'PyramidLevels', ...
+            levels);
+    end
     
     % Clear temporary variables
     clear moving fixed Rmoving Rfixed metric optimizer;
