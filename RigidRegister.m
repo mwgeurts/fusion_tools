@@ -602,6 +602,7 @@ case 'PLASTIMATCH'
         delete(targetFilename);
         delete(refMaskFilename);
         delete(targetMaskFilename);
+        delete(adjustments);
     
     % If it fails, log a warning
     catch
