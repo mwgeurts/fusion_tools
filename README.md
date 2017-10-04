@@ -16,7 +16,7 @@ At this time only rigid registration is available. Check back later as this modu
   * [RigidTransform](README.md#rigidtransform)
   * [FunctionWhich](README.md#functionwhich)
 * [Event Calling](README.md#event-calling)
-* [Unit Test](README.md#unit-test)
+* [Unit Testing](README.md#unit-testing)
 * [License](README.md#license)
 
 ## Installation and Use
@@ -165,7 +165,7 @@ if ~isempty(executable) {
 
 These functions optionally return execution status and error information to an `Event()` function. If available in the MATLAB path, `Event()` will be called with one or two variables: the first variable is a string containing the status information, while the second is the status classification (WARN or ERROR). If the status information is only informative, the second argument is not included.  Finally, if no `Event()` function is available errors will still be thrown via the standard `error()` MATLAB function.
 
-## Unit Test
+## Unit Testing
 
 This function includes a `UnitTest` class to validate key features of the provided functions. When executed via `runtests()`, this class will automatically run a series of unit tests against the specified executable, and create Markdown reports summarizing the results. The MATLAB profiler is turned on during unit test execution to quantify the code coverage. Refer to the [MathWorks documentation](https://www.mathworks.com/help/matlab/class-based-unit-tests.html) for more information on running class-based unit tests.
 
