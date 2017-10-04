@@ -137,9 +137,7 @@ modImageB = RigidTransform(imageB, rigid);
 
 ### FunctionWhich
 
-`FunctionWhich()` attempts to find the location of the provided command. This function is part of the fusion_tools submodule, and is called by the other functions to determine how to execute plastimatch. The command is first searched for in the system path; if not found, the function will successively search through each path provided in the paths variable until it is found. 
-
-This function is compatible with linux, MacOS, and Windows 7 and later operating systems. 
+`FunctionWhich()` attempts to find the location of the provided command. This function is part of the fusion_tools submodule, and is called by the other functions to determine how to execute plastimatch. The command is first searched for in the system path; if not found, the function will successively search through each path provided in the paths variable until it is found. This function is compatible with linux, MacOS, and Windows 7 and later operating systems. 
 
 The following variables are required for proper execution: 
 
