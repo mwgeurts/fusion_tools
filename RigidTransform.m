@@ -4,6 +4,11 @@ function mod = RigidTransform(image, v)
 % and voxel positions as the original image. Image values outside of the
 % original image are set to zero.
 %
+% This function optionally uses the Parallel Processing Toolbox interp3() 
+% when performing GPU-based interpolation. If this toolbox or a compatible 
+% GPU device is not found, it will automatically revert to CPU 
+% interpolation. 
+%
 % The following variables are required for proper execution: 
 %
 %   image:  structure containing the image data, dimensions, width,
@@ -17,6 +22,36 @@ function mod = RigidTransform(image, v)
 %   mod:    structure containing a transformed image
 %           (converted back to the daily IVDT), transformation matrix, 
 %           dimensions, width, and start coordinates
+%
+%
+% Below is an example of how this function is used alongside RigidRegister. 
+% The dicom_tools submodule is used to load the images:
+%
+% % Add the dicom_tools functions
+% addpath('/path/to/dicom_tools/');
+%
+% % Load DICOM images 
+% path = '/path/to/files/';  
+% names = { 
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.274.1.dcm' 
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.274.2.dcm'
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.274.3.dcm'  
+% };  
+% imageA = LoadDICOMImages(path, names);  
+%
+% path = '/path/to/files/';  
+% names = { 
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.123.1.dcm' 
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.123.2.dcm'
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.123.3.dcm'  
+% };  
+% imageB = LoadDICOMImages(path, names); 
+%
+% % Register the images using PLASTIMATCH MSE-based rigid registration
+% rigid = RigidRegister(imageA, imageB, 'method', 'PLASTIMATCH');
+%
+% % Transform image B using the rigid registration results
+% modImageB = RigidTransform(imageB, rigid);
 %
 % Author: Mark Geurts, mark.w.geurts@gmail.com
 % Copyright (C) 2017 University of Wisconsin Board of Regents

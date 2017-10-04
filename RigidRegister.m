@@ -40,6 +40,38 @@ function rigid = RigidRegister(ref, target, varargin)
 %               roll x y z], where angles are in degrees and distances are
 %               in cm.
 %
+% Below is an example of how this function is used. The dicom_tools
+% submodule is used to load the images:
+%
+% % Add the dicom_tools functions
+% addpath('/path/to/dicom_tools/');
+%
+% % Load DICOM images 
+% path = '/path/to/files/';  
+% names = { 
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.274.1.dcm' 
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.274.2.dcm'
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.274.3.dcm'  
+% };  
+% imageA = LoadDICOMImages(path, names);  
+%
+% path = '/path/to/files/';  
+% names = { 
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.123.1.dcm' 
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.123.2.dcm'
+%     '2.16.840.1.114362.1.5.1.0.101218.5981035325.299641582.123.3.dcm'  
+% };  
+% imageB = LoadDICOMImages(path, names); 
+%
+% % Register the images using MATLAB MI-based rigid registration
+% rigid = RigidRegister(imageA, imageB, 'method', 'MATLAB', 'metric', 'MI');
+%
+% % Re-register the images using PLASTIMATCH MSE-based rigid registration
+% rigid = RigidRegister(imageA, imageB, 'method', 'PLASTIMATCH');
+%
+% % Re-register the images using only translations
+% rigid = RigidRegister(imageA, imageB, 'rotations', false);
+%
 % Author: Mark Geurts, mark.w.geurts@gmail.com
 % Copyright (C) 2017 University of Wisconsin Board of Regents
 %

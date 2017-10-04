@@ -6,9 +6,9 @@ function executable = FunctionWhich(command)
 % successively search through each path provided in the paths variable 
 % until it is found. 
 %
-% This function is compatible with linux, Macintosh OSX, and Windows 7 and
-% later operating systems. Plastimath is Copyrighted by The General 
-% Hospital Corporation and is available at http://plastimatch.org.
+% This function is compatible with linux, MacOS, and Windows 7 and later 
+% operating systems. Plastimatch is Copyrighted by The General Hospital 
+% Corporation and is available at http://plastimatch.org.
 %
 % The following variables are required for proper execution: 
 %
