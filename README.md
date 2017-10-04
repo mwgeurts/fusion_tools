@@ -35,7 +35,7 @@ The following subsections describe what inputs and return variables are used, an
 
 ### RigidRegister
 
-`RigidRegister()` rigidly registers a target CT image to a reference image. This function supports both MATLAB and Plastimatch-based registration. The type of registration and basic parameters can be provided 
+`RigidRegister()` rigidly registers a target CT image to a reference image. This function supports both MATLAB and Plastimatch-based registration. The type of registration and basic parameters can be provided. The rigid output vector is compatible with other daily image registration vectors and image manipulation tools within [tomo_extract](https://github.com/mwgeurts/tomo_extract) such as `LoadDailyImage()` and `MergeImages()`. 
 
 If CT to density tables are provided, the reference image is converted to target-equivalent by first interpolating to density using the reference IVDT and then subsequently interpolating back to image value using the target IVDT.
 
